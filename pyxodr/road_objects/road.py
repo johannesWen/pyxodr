@@ -239,6 +239,8 @@ class Road:
         stacked_coordinates = interpolate_path(
             stacked_coordinates, resolution=self.resolution
         )
+        
+        # print(stacked_coordinates.shape)
 
         return stacked_coordinates
 
@@ -419,47 +421,52 @@ class Road:
         for lane_section in self.lane_sections:
             lane_section._link_lanes()
 
-    def __partition_lane_offset_line_into_lane_sections(
-        self,
-    ) -> List[Tuple[etree._Element, np.ndarray]]:
-        lane_section_distances = []
-        for lane_section_xml in self.road_xml.findall("lanes/laneSection"):
-            lane_section_distances.append(float(lane_section_xml.attrib["s"]))
+    def __partition_lane_offset_line_into_lane_sections(self) -> List[Tuple[etree._Element, np.ndarray, np.ndarray, np.ndarray]]:
+        lane_section_xmls = list(self.road_xml.findall("lanes/laneSection"))
+        lane_section_distances = [float(xml.attrib["s"]) for xml in lane_section_xmls]
 
-        # Partition the reference line into subsections that fit into each
-        # distance range
+        # Partition the reference line into subsections corresponding to lane section distances.
         reference_line_direction_vectors = np.diff(self.reference_line, axis=0)
-        reference_line_distances = np.cumsum(
-            np.linalg.norm(reference_line_direction_vectors, axis=1)
-        )
-        # Make the same length as the original reference line
+        reference_line_distances = np.cumsum(np.linalg.norm(reference_line_direction_vectors, axis=1))
         reference_line_distances = np.insert(reference_line_distances, 0, 0)
 
-        partition_indices = np.searchsorted(
-            reference_line_distances, np.array(lane_section_distances)
-        )
-
+        partition_indices = np.searchsorted(reference_line_distances, np.array(lane_section_distances))
         partition_indices = list(partition_indices)
-        # In order that we can go through pairs of indices
         partition_indices.append(len(self.reference_line))
 
         lane_section_tuples = []
-        for i, lane_section_xml in enumerate(
-            self.road_xml.findall("lanes/laneSection")
-        ):
-            lane_section_tuples.append(
-                (
-                    lane_section_xml,
-                    self.lane_offset_line[
-                        partition_indices[i] : partition_indices[i + 1]
-                    ],
-                    self.z_coordinates[partition_indices[i] : partition_indices[i + 1]],
-                    self.reference_line[
-                        partition_indices[i] : partition_indices[i + 1]
-                    ],
-                )
-            )
+        for i, lane_section_xml in enumerate(lane_section_xmls):
+            # Get slices for the current lane section.
+            ref_slice = self.reference_line[partition_indices[i]:partition_indices[i + 1]]
+            offset_slice = self.lane_offset_line[partition_indices[i]:partition_indices[i + 1]]
+            z_slice = self.z_coordinates[partition_indices[i]:partition_indices[i + 1]]
+
+            # Ensure the reference slice has at least 2 points.
+            if len(ref_slice) < 2:
+                if len(ref_slice) == 1:
+                    # Duplicate the single point.
+                    ref_slice = np.vstack([ref_slice, ref_slice])
+                else:
+                    # If empty, use the first point of the offset slice if available, else default to (0,0)
+                    if len(offset_slice) >= 1:
+                        fallback_point = offset_slice[0]
+                    else:
+                        fallback_point = np.array([0.0, 0.0])
+                    ref_slice = np.vstack([fallback_point, fallback_point])
+                print(f"Adjusted lane section at index {i} to ensure minimum reference line points.")
+
+            # Ensure the z coordinates slice has at least 2 points.
+            if len(z_slice) < 2:
+                if len(z_slice) == 1:
+                    z_slice = np.hstack([z_slice, z_slice])
+                else:
+                    z_slice = np.zeros(2)
+                print(f"Adjusted lane section at index {i} to ensure minimum z coordinate points.")
+
+            lane_section_tuples.append((lane_section_xml, offset_slice, z_slice, ref_slice))
+
         return lane_section_tuples
+
 
     @cached_property
     def lane_sections(self) -> List[LaneSection]:
@@ -494,7 +501,6 @@ class Road:
                     ignored_lane_types=self.ignored_lane_types,
                 )
             )
-
         return lane_sections
 
     @cached_property
@@ -579,8 +585,19 @@ class Road:
             Axis with the road plotted on it.
         """
         # Plot the road reference line.
-        global_coords = self.reference_line
+        # Compute global coordinates of the road reference line (and possibly other lines)
+        global_coords = self.reference_line  # or however global_coords is computed
         global_coords_len = len(global_coords)
+        
+        # If global_coords is empty, log a warning and skip plotting this road.
+        if global_coords_len == 0:
+            print(f"Warning: Road {self.id} produced no global coordinates; skipping plotting for this road.")
+            return axis
+
+        # Otherwise, proceed to plot using the midpoint as the origin.
+        origin_coordinate = global_coords[global_coords_len // 2]
+        
+        # (rest of your plotting code goes here, e.g., drawing the road, arrows, labels, etc.)
         axis.plot(*global_coords.T, linewidth=0.05 * line_scale_factor)
         if label_size is not None:
             x, y = global_coords[int(len(global_coords) // 2) - 1 :].T
@@ -609,9 +626,9 @@ class Road:
                 *origin_coordinate,
                 *arrow_difference_vector,
                 shape="full",
-                lw=0.5,
+                lw=0.5* line_scale_factor,
                 length_includes_head=True,
-                head_width=0.5,
+                head_width=0.5* line_scale_factor,
             )
         except IndexError as e:
             print(

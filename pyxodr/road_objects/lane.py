@@ -421,9 +421,9 @@ class Lane:
                 *origin_coordinate,
                 *arrow_difference_vector,
                 shape="full",
-                lw=0.5,
+                lw=0.5* line_scale_factor,
                 length_includes_head=True,
-                head_width=0.5,
+                head_width=0.5* line_scale_factor,
             )
         except IndexError as e:
             print(
@@ -446,9 +446,9 @@ class Lane:
                 *origin_coordinate,
                 *arrow_difference_vector,
                 shape="full",
-                lw=0.5,
+                lw=0.5* line_scale_factor,
                 length_includes_head=True,
-                head_width=0.5,
+                head_width=0.5* line_scale_factor,
                 color="red",
             )
 

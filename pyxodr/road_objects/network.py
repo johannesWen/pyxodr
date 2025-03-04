@@ -163,6 +163,13 @@ class RoadNetwork:
             road_id = road_xml.attrib["id"]
             if road_id in ids_to_avoid:
                 continue
+
+            # length = float(road_xml.get("length"))
+            # max_length = 5
+            # if length < max_length: 
+            #     print(f"Road {road_id} has length ({length}) < {max_length}, skipping")
+            #     continue
+
             if road_id in self.road_ids_to_object.keys():
                 roads.append(self.road_ids_to_object[road_id])
             else:
@@ -238,12 +245,15 @@ class RoadNetwork:
             if plot_lane_centres:
                 for lane_section in road.lane_sections:
                     for lane in lane_section.lanes:
-                        axis = lane.plot(
-                            axis,
-                            plot_start_and_end=plot_start_and_end,
-                            line_scale_factor=line_scale_factor,
-                            label_size=label_size,
-                        )
+                        try:
+                            axis = lane.plot(
+                                axis,
+                                plot_start_and_end=plot_start_and_end,
+                                line_scale_factor=line_scale_factor,
+                                label_size=label_size,
+                            )
+                        except Exception as e:
+                            print(e)
 
         # Visualise junctions
         if plot_junctions:

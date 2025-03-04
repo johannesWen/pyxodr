@@ -217,78 +217,48 @@ class LaneSection:
     def _link_lanes(self):
         """
         Connect all lane objects within this lane section with their neighbours.
-
-        Neighbours == the lane objects corresponding to their successors and
-        predecessors. This method will be called as part of the "connection" tree of
-        calls. This method is called by _link_lane_sections in Road, and the root of the
-        tree is the _link_roads method in network (called by get_roads).
         """
-        # This should be the simplest connection process - the predecessor and successor
-        # data should be correct, and we just have to query the XML to get the
-        # connecting lane ids
-        (
-            predecessor_lane_section,
-            predecessor_connection_position,
-        ) = self.predecessor_data
+        (predecessor_lane_section, predecessor_connection_position) = self.predecessor_data
         successor_lane_section, successor_connection_position = self.successor_data
 
         if predecessor_lane_section is not None:
             for lane in self.lanes:
                 for predecessor_id in lane.predecessor_ids:
-                    try:
-                        predecessor_lane_obj = (
-                            predecessor_lane_section.get_lane_from_id(predecessor_id)
-                        )
-                    except KeyError as e:
+                    # Check if the predecessor id exists in the predecessor lane section
+                    if predecessor_id not in predecessor_lane_section._id_to_lane:
+                        # Optionally, check if it is among ignored lanes and skip silently.
                         if predecessor_id in predecessor_lane_section.ignored_lane_ids:
                             continue
-                        raise KeyError(
-                            f"Raised by lane {lane.id}, lane section "
-                            + f"{self.lane_section_ordinal} in "
-                            + f"road {self.road_id}: "
-                            + str(e)
+                        # Otherwise log a warning and skip linking for this predecessor
+                        print(
+                            f"Warning: Lane id {predecessor_id} not found in predecessor lane section "
+                            f"of road {self.road_id}. Skipping linking for lane {lane.id}."
                         )
-                    lane.predecessor_data.append(
-                        (predecessor_lane_obj, predecessor_connection_position)
-                    )
-                    # Also duplicate this information in the other lane - ensures
-                    # all connections are eventually returned by traffic_flow_successors
-                    # - duplicated data doesn't matter as this is fixed by returning
-                    # a set.
+                        continue
+                    # If found, link the lane as usual.
+                    predecessor_lane_obj = predecessor_lane_section.get_lane_from_id(predecessor_id)
+                    lane.predecessor_data.append((predecessor_lane_obj, predecessor_connection_position))
+                    # Also duplicate this information in the other lane to ensure symmetry.
                     if predecessor_connection_position is ConnectionPosition.BEGINNING:
-                        predecessor_lane_obj.predecessor_data.append(
-                            (lane, ConnectionPosition.BEGINNING)
-                        )
+                        predecessor_lane_obj.predecessor_data.append((lane, ConnectionPosition.BEGINNING))
                     else:
-                        predecessor_lane_obj.successor_data.append(
-                            (lane, ConnectionPosition.BEGINNING)
-                        )
+                        predecessor_lane_obj.successor_data.append((lane, ConnectionPosition.BEGINNING))
 
         if successor_lane_section is not None:
             for lane in self.lanes:
                 for successor_id in lane.successor_ids:
-                    try:
-                        successor_lane_obj = successor_lane_section.get_lane_from_id(
-                            successor_id
-                        )
-                    except KeyError as e:
+                    if successor_id not in successor_lane_section._id_to_lane:
                         if successor_id in successor_lane_section.ignored_lane_ids:
                             continue
-                        raise KeyError(
-                            f"Raised by lane {lane.id}, lane section "
-                            + f"{self.lane_section_ordinal} in "
-                            + f"road {self.road_id}: "
-                            + str(e)
+                        print(
+                            f"Warning: Lane id {successor_id} not found in successor lane section "
+                            f"of road {self.road_id}. Skipping linking for lane {lane.id}."
                         )
-                    lane.successor_data.append(
-                        (successor_lane_obj, successor_connection_position)
-                    )
-                    # Duplicate data as above
+                        continue
+                    successor_lane_obj = successor_lane_section.get_lane_from_id(successor_id)
+                    lane.successor_data.append((successor_lane_obj, successor_connection_position))
                     if successor_connection_position is ConnectionPosition.BEGINNING:
-                        successor_lane_obj.predecessor_data.append(
-                            (lane, ConnectionPosition.END)
-                        )
+                        successor_lane_obj.predecessor_data.append((lane, ConnectionPosition.END))
                     else:
-                        successor_lane_obj.successor_data.append(
-                            (lane, ConnectionPosition.END)
-                        )
+                        successor_lane_obj.successor_data.append((lane, ConnectionPosition.END))
+
